@@ -1,0 +1,138 @@
+# install all packages needed for analysis and load them.
+
+install.packages("tidyverse")
+install.packages("janitor")
+install.packages("readr")
+install.packages("lubridate")
+install.packages("dplR")
+install.packages("hms")
+install.packages("ti")
+
+library(tidyverse)
+library(janitor)
+library(readr)
+library(lubridate)
+library(dplR)
+library(hms)
+library(tidyr)
+
+## import the data that was provided over the past 12 months of business into a data frame
+
+df1 <- read.csv('2022may.csv')
+df2 <- read.csv('2022june.csv')
+df3 <- read.csv('2022july.csv')
+df4 <- read.csv('2022august.csv')
+df5 <- read.csv('2022september.csv')
+df6 <- read.csv('2022october.csv')
+df7 <- read.csv('2022november.csv')
+df8 <- read.csv('2022december.csv')
+df9 <- read.csv('2023janurary.csv')
+df10 <- read.csv('2023february.csv')
+df11 <- read.csv('2023march.csv')
+df12 <- read.csv('2023april.csv')
+
+# Now I will rename the files by their month to keep track of each data file.
+
+df1['month'] <- 'May'
+df2['month'] <- 'June'
+df3['month'] <- 'July'
+df4['month'] <- 'August'
+df5['month'] <- 'September'
+df6['month'] <- 'October'
+df7['month'] <- 'November'
+df8['month'] <- 'December'
+df9['month'] <- 'Janurary'
+df10['month'] <- 'February'
+df11['month'] <- 'March'
+df12['month'] <- 'April'
+
+# Using the rbind() function we will combine all twelve months into one data frame called past_year.
+
+past_year <- rbind(df1,df2,df3,df4,df5,df6,df7,df8,df9,df10,df11,df12)
+
+# Made a copy of the entire data frame to preserve data integrity. And removed the individual files to preserve space.
+
+past_year_2 <- past_year
+
+remove(df1,df2,df3,df4,df5,df6,df7,df8,df9,df10,df11,df12)
+
+# Use the glimpse() function to get an overview of our data columns and rows.
+
+glimpse(past_year)
+
+## Now we can remove any unwanted columns. Also we will remove any columns with missing data.
+
+past_year <- past_year %>%
+  select(-start_lng)
+past_year <- past_year %>%
+  select(-start_lng)
+past_year <- past_year %>%
+  select(-end_lng)
+past_year <- past_year %>%
+  select(-end_lat)
+
+
+## Checked to see that all rows in the "rideable_type" column contain one of the three types of bike "electric_bike", "classic_bike", and "docked_bike".
+
+unique(past_year$rideable_type)
+
+# Added column for ride_length (ride duration in minutes) and removed any rows with negative ride length or equal to zero and store them in a new data frame called "tripdata_clean". I will also convert the new column into a numeric column.
+
+past_year$ride_length <- difftime(past_year$ended_at,past_year$started_at, units = "mins")
+
+past_year$ride_length <- as.numeric(past_year$ride_length)
+
+tripdata_clean <- past_year[!(past_year$ride_length <= 0),]
+
+## I will also add columns for hour, date, month, year, day of week.
+
+tripdata_clean <- tripdata_clean%>%
+  mutate(year = format(as.Date(started_at),"%Y"))%>%  # Extract Year
+  mutate(month = format(as.Date(started_at),"%B"))%>% # Extract Month
+  mutate(date = format(as.Date(started_at),"%d"))%>% # Extract Date
+  mutate(day_of_week = format(as.Date(started_at),"%A")) # Extract day of week
+
+tripdata_clean$hour <- hour(as_datetime(tripdata_clean$started_at))
+                            
+# Cleaning data by removing duplicates, and rows where the ride length is less than 5 seconds or end station names is HUBBARD ST BIKE CHECKING (LBS-WH-TEST) since this is a testing station.
+
+tripdata_clean <- distinct(tripdata_clean)
+tripdata_clean[!(tripdata_clean$ride_length < 5 | tripdata_clean$end_station_name == "HUBBARD ST BIKE CHECKING (LBS-WH-TEST)"),]
+
+## Difference between casuals and members and average ride time per day casual vs. member.
+
+aggregate(tripdata_clean$ride_length ~ tripdata_clean$member_casual, FUN = mean)
+aggregate(tripdata_clean$ride_length ~ tripdata_clean$member_casual, FUN = median)
+aggregate(tripdata_clean$ride_length ~ tripdata_clean$member_casual, FUN = max)
+aggregate(tripdata_clean$ride_length ~ tripdata_clean$member_casual, FUN = min)
+
+aggregate(tripdata_clean$ride_length ~ tripdata_clean$member_casual + tripdata_clean$day_of_week, FUN = mean)
+
+# Generate a fresh table that categorizes riders as either members or casuals, organized by weekday, average ride duration, total number of rides, and types of rides, in order to facilitate deeper analysis.
+
+mem_cas_clean <- tripdata_clean %>%
+  group_by(member_casual, day_of_week, rideable_type) %>%
+  summarise(number_of_rides = n(), average_duration = mean(ride_length)) %>%
+  arrange(member_casual, day_of_week)
+
+# Create a visualization of members vs. casuals number of rides by hour and day.
+
+tripdata_clean %>%
+  group_by(member_casual, hour, day_of_week) %>%
+  summarise(number_of_rides = n()) %>%
+  arrange(member_casual, hour) %>%
+  ggplot(aes(x = hour, y = number_of_rides, color = member_casual)) +
+  geom_line() +
+  facet_grid(~day_of_week ) +
+  labs("text", title = 'Number of rides by hour of the day broken down to days')
+
+
+# Create a visualization of number of rides by month. 
+
+tripdata_clean %>%
+  group_by(member_casual, month) %>%
+  summarise(number_of_rides = n()) %>%
+  arrange(member_casual, month) %>%
+  ggplot(aes(x = month, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = 'dodge') +
+  labs("text", title = "Number of rides by month")
